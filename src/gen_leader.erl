@@ -135,8 +135,9 @@
           pendack,
           incarn,
           nextel,
-          bcast_type              %% all | one. When `all' each election event
-          %% will be broadcast to all candidate nodes.
+          bcast_type,              %% all | one. When `all' each election event
+                                   %% will be broadcast to all candidate nodes.
+          queued_messages = []
          }).
 
 -record(server, {
@@ -529,7 +530,13 @@ safe_loop(#server{mod = Mod, state = State} = Server, Role,
                     %          [self(), NewE]),
                     %io:format("~n~n~n ---Gen leader is forcing this instance to surrender.---~n~n~n"),
                     {ok,NewState} = Mod:surrendered(State,Synch,NewE),
-                    loop(Server#server{state = NewState},surrendered,NewE,Msg);
+
+                    {NServer, NRole, NE, LMsg} =
+                      handle_queued_messages(
+                        Server#server{state = NewState}, surrendered, NewE,
+                        Msg, lists:reverse(NewE#election.queued_messages)),
+
+                    loop(NServer, NRole, NE, LMsg);
                 false ->
                     safe_loop(Server,Role,E,Msg)
             end;
@@ -573,7 +580,13 @@ safe_loop(#server{mod = Mod, state = State} = Server, Role,
                     NewE = E#election{ leader = From, status = worker },
                     %io:format("~n~n~n ---Gen leader is forcing this instance to surrender.---~n~n~n"),
                     {ok,NewState} = Mod:surrendered(State,Synch,NewE),
-                    loop(Server#server{state = NewState},worker,NewE,Msg);
+
+                    {NS, NRole, NE, LMsg} =
+                      handle_queued_messages(
+                        Server#server{state = NewState}, worker, NewE, Msg,
+                        lists:reverse(NewE#election.queued_messages)),
+
+                    loop(NS, NRole, NE, LMsg);
                 false ->
                     %% This should be a VERY special case...
                     %% But doing nothing is the right thing!
@@ -667,7 +680,11 @@ safe_loop(#server{mod = Mod, state = State} = Server, Role,
                             end
                     end
             end,
-            hasBecomeLeader(NewE,Server,Msg)
+            hasBecomeLeader(NewE,Server,Msg);
+          Msg ->
+            Q = E#election.queued_messages,
+            NewE = E#election{queued_messages = [Msg|Q]},
+            safe_loop(Server, Role, NewE, Msg)
       end
     end.
 
@@ -918,23 +935,38 @@ print_event(Dev, Event, Name) ->
     io:format(Dev, "*DBG* ~p dbg  ~p~n", [Name, Event]).
 
 
+handle_queued_messages(Server, Role, E, _LMsg, [Msg|Messages]) ->
+    {NS, NR, NE} = handle_msg(Msg, Server, Role, E, false),
+    handle_queued_messages(NS, NR, NE, Msg, Messages);
+handle_queued_messages(Server, Role, E, LMsg, []) ->
+    NE = E#election{queued_messages = []},
+    {Server, Role, NE, LMsg}.
+
+loop_or_return(true, Server, Role, E, Msg) ->
+    loop(Server, Role, E, Msg);
+loop_or_return(false, Server, Role, E, _Msg) ->
+    {Server, Role, E}.
+
+handle_msg(Msg, Server, Role, E) ->
+    handle_msg(Msg, Server, Role, E, true).
+
 handle_msg({'$leader_call', From, Request} = Msg,
-           #server{mod = Mod, state = State} = Server, elected = Role, E) ->
+           #server{mod = Mod, state = State} = Server, elected = Role, E, Loop) ->
     case catch Mod:handle_leader_call(Request, From, State, E) of
         {reply, Reply, NState} ->
             NewServer = reply(From, {leader,reply,Reply},
                               Server#server{state = NState}, Role, E),
-            loop(NewServer, Role, E,Msg);
+            loop_or_return(Loop, NewServer, Role, E,Msg);
         {reply, Reply, Broadcast, NState} ->
             NewE = broadcast({from_leader,Broadcast}, E),
             NewServer = reply(From, {leader,reply,Reply},
                               Server#server{state = NState}, Role,
                               NewE),
-            loop(NewServer, Role, NewE,Msg);
+            loop_or_return(Loop, NewServer, Role, NewE,Msg);
         {noreply, NState} = Reply ->
             NewServer = handle_debug(Server#server{state = NState},
                                      Role, E, Reply),
-            loop(NewServer, Role, E,Msg);
+            loop_or_return(Loop, NewServer, Role, E,Msg);
         {stop, Reason, Reply, NState} ->
             {'EXIT', R} =
                 (catch terminate(Reason, Msg,
@@ -943,36 +975,36 @@ handle_msg({'$leader_call', From, Request} = Msg,
             reply(From, Reply),
             exit(R);
         Other ->
-            handle_common_reply(Other, Msg, Server, Role, E)
+            handle_common_reply(Other, Msg, Server, Role, E, Loop)
     end;
 handle_msg({from_leader, Cmd} = Msg,
-           #server{mod = Mod, state = State} = Server, Role, E) ->
+           #server{mod = Mod, state = State} = Server, Role, E, Loop) ->
     NewE = check_candidates(E),
     handle_common_reply(catch Mod:from_leader(Cmd, State, NewE),
-                        Msg, Server, Role, NewE);
+                        Msg, Server, Role, NewE, Loop);
 handle_msg({'$leader_call', From, Request} = Msg, Server, Role,
-           #election{buffered = Buffered, leader = Leader} = E) ->
+           #election{buffered = Buffered, leader = Leader} = E, Loop) ->
     Ref = make_ref(),
     Leader ! {'$leader_call', {self(),Ref}, Request},
     NewBuffered = [{Ref,From}|Buffered],
-    loop(Server, Role, E#election{buffered = NewBuffered},Msg);
+    loop_or_return(Loop, Server, Role, E#election{buffered = NewBuffered},Msg);
 handle_msg({Ref, {leader,reply,Reply}} = Msg, Server, Role,
-           #election{buffered = Buffered} = E) ->
+           #election{buffered = Buffered} = E, Loop) ->
     {value, {_,From}} = keysearch(Ref,1,Buffered),
     NewServer = reply(From, {leader,reply,Reply}, Server, Role,
                       E#election{buffered = keydelete(Ref,1,Buffered)}),
-    loop(NewServer, Role, E, Msg);
+    loop_or_return(Loop, NewServer, Role, E, Msg);
 handle_msg({'$gen_call', From, Request} = Msg,
-           #server{mod = Mod, state = State} = Server, Role, E) ->
+           #server{mod = Mod, state = State} = Server, Role, E, Loop) ->
     case catch Mod:handle_call(Request, From, State, E) of
         {reply, Reply, NState} ->
             NewServer = reply(From, Reply,
                               Server#server{state = NState}, Role, E),
-            loop(NewServer, Role, E, Msg);
+            loop_or_return(Loop, NewServer, Role, E, Msg);
         {noreply, NState} = Reply ->
             NewServer = handle_debug(Server#server{state = NState},
                                      Role, E, Reply),
-            loop(NewServer, Role, E, Msg);
+            loop_or_return(Loop, NewServer, Role, E, Msg);
         {stop, Reason, Reply, NState} ->
             {'EXIT', R} =
                 (catch terminate(Reason, Msg, Server#server{state = NState},
@@ -980,14 +1012,14 @@ handle_msg({'$gen_call', From, Request} = Msg,
             reply(From, Reply),
             exit(R);
         Other ->
-            handle_common_reply(Other, Msg, Server, Role, E)
+            handle_common_reply(Other, Msg, Server, Role, E, Loop)
     end;
 handle_msg({'$gen_cast',Msg} = Cast,
-           #server{mod = Mod, state = State} = Server, Role, E) ->
+           #server{mod = Mod, state = State} = Server, Role, E, Loop) ->
     handle_common_reply(catch Mod:handle_cast(Msg, State, E),
-                        Cast, Server, Role, E);
+                        Cast, Server, Role, E, Loop);
 handle_msg({'$leader_cast', Msg} = Cast,
-          #server{mod = Mod, state = State} = Server, elected = Role, E) ->
+          #server{mod = Mod, state = State} = Server, elected = Role, E, Loop) ->
     case catch Mod:handle_leader_cast(Msg, State, E) of
         {noreply, NState} ->
             NewServer = handle_debug(Server#server{state = NState},
@@ -999,29 +1031,29 @@ handle_msg({'$leader_cast', Msg} = Cast,
                                      Role, E, Cast),
             loop(NewServer, Role, NewE, Cast);
         Other ->
-            handle_common_reply(Other, Msg, Server, Role, E)
+            handle_common_reply(Other, Msg, Server, Role, E, Loop)
     end;
 handle_msg({'$leader_cast', Msg} = Cast, Server, Role,
-           #election{leader = Leader} = E) ->
+           #election{leader = Leader} = E, Loop) ->
     Leader ! {'$leader_cast', Msg},
-    loop(Server, Role, E, Cast);
+    loop_or_return(Loop, Server, Role, E, Cast);
 
 handle_msg(Msg,
-           #server{mod = Mod, state = State} = Server, Role, E) ->
+           #server{mod = Mod, state = State} = Server, Role, E, Loop) ->
     handle_common_reply(catch Mod:handle_info(Msg, State),
-                        Msg, Server, Role, E).
+                        Msg, Server, Role, E, Loop).
 
 
-handle_common_reply(Reply, Msg, Server, Role, E) ->
+handle_common_reply(Reply, Msg, Server, Role, E, Loop) ->
     case Reply of
         {noreply, NState} -> 
             NewServer = handle_debug(Server#server{state = NState},
                                      Role, E, Reply),
-            loop(NewServer, Role, E, Msg);
+            loop_or_return(Loop, NewServer, Role, E, Msg);
         {ok, NState} ->
             NewServer = handle_debug(Server#server{state = NState},
                                      Role, E, Reply),
-            loop(NewServer, Role, E, Msg);
+            loop_or_return(Loop, NewServer, Role, E, Msg);
         {stop, Reason, NState} ->
             terminate(Reason, Msg, Server#server{state = NState}, Role, E);
         {'EXIT', Reason} ->
@@ -1274,8 +1306,13 @@ hasBecomeLeader(E,Server,Msg) ->
                     end
               end,
 
+            {NServer, NRole, NE, LMsg} =
+              handle_queued_messages(
+                Server#server{state = NewState2}, elected, NewE2, Msg,
+                lists:reverse(NewE2#election.queued_messages)),
+
             %%    (It's meaningful only when I am the leader!)
-            loop(Server#server{state = NewState2},elected,NewE2,Msg);
+            loop(NServer, NRole, NE, LMsg);
         false ->
             safe_loop(Server,candidate,E,Msg)
     end.
