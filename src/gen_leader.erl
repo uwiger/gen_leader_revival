@@ -1243,7 +1243,7 @@ hasBecomeLeader(E,Server,Msg) ->
             lists:foreach(
               fun(Node) ->
                       {E#election.name,Node} !
-                          {ldr, Synch, E#election.elid, self()}
+                          {ldr, Synch, E#election.elid, E#election.worker_nodes, self()}
               end,E#election.acks),
 
             %% Make sure we will try to contact all workers!
