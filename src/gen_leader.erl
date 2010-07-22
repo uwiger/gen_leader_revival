@@ -117,6 +117,7 @@
 
 -record(election, {
           leader = none,
+          previous_leader = none,
           name,
           leadernode = none,
           candidate_nodes = [],
@@ -520,6 +521,7 @@ safe_loop(#server{mod = Mod, state = State} = Server, Role,
                     NewE1 = mon_node(E, From, Server),
                     NewE = NewE1#election{leader = From,
                                           leadernode = node(From),
+                                          previous_leader = E#election.leader,
                                           worker_nodes = Workers,
                                           status = norm,
                                           cand_timer=undefined},
@@ -610,6 +612,7 @@ safe_loop(#server{mod = Mod, state = State} = Server, Role,
             case Node == E#election.leadernode of
                 true ->
                     NewE = E#election{ leader = none, leadernode = none,
+                                       previous_leader = E#election.leader,
                                        status = waiting_worker,
                                        monitored = []};
                 false ->
@@ -1178,6 +1181,7 @@ continStage2(E, Server) ->
                                                 % io:format("I am the leader (Node ~w) ~n", [node()]),
             E#election{leader = self(),
                        leadernode = node(),
+                       previous_leader = E#election.leader,
                        status = norm}
     end.
 
@@ -1252,8 +1256,26 @@ hasBecomeLeader(E,Server,Msg) ->
             %% io:format("==> I am the leader! (acks: ~200p)\n", [E#election.acks]),
             %% Set the internal timeout (corresponds to Periodically)
             timer:send_after(E#election.cand_timer_int, {heartbeat, node()}),
+
+            %% trigger handle_DOWN callback if previous leader is down
+            PrevLeader = E#election.previous_leader,
+            {NewState2, NewE2} =
+              case PrevLeader of
+                  none -> {NewState, NewE};
+                  Pid when is_pid(Pid) ->
+                    case lists:member(node(PrevLeader), down(E)) of
+                        false -> {NewState, NewE};
+                        true ->
+                          case (Server#server.mod):handle_DOWN(node(PrevLeader), NewState, NewE) of
+                              {ok, NS} -> {NS, NewE};
+                              {ok, Synch2, NS} ->
+                                {NS, broadcast({from_leader, Synch2}, NewE)}
+                          end
+                    end
+              end,
+
             %%    (It's meaningful only when I am the leader!)
-            loop(Server#server{state = NewState},elected,NewE,Msg);
+            loop(Server#server{state = NewState2},elected,NewE2,Msg);
         false ->
             safe_loop(Server,candidate,E,Msg)
     end.
