@@ -461,24 +461,22 @@ safe_loop(#server{mod = Mod, state = State} = Server, Role,
           #election{name = Name} = E, _PrevMsg) ->
     %% Event for QuickCheck
     %% ?EVENT({Role,E}),
-  receive
-    Msg ->
-      case Msg of
-        {system, From, Req} ->
-            #server{parent = Parent, debug = Debug} = Server,
-            sys:handle_system_msg(Req, From, Parent, ?MODULE, Debug,
-                                  [safe, Server, Role, E]);
-        {'EXIT', _, Reason} = Msg ->
-            terminate(Reason, Msg, Server, Role, E);
-        {halt,T,From} = Msg ->
-            NewE = halting(E,T,From,Server),
-            From ! {ackLeader,T,self()},
-            safe_loop(Server,Role,NewE,Msg);
-        {hasLeader,Ldr,T,_} = Msg ->
-            NewE1 = mon_node(E,Ldr,Server),
-            case ( (E#election.status == elec2) and (E#election.acks /= []) ) of
-                true ->
-                    lists:foreach(
+    receive
+	{system, From, Req} ->
+	    #server{parent = Parent, debug = Debug} = Server,
+	    sys:handle_system_msg(Req, From, Parent, ?MODULE, Debug,
+				  [safe, Server, Role, E]);
+	{'EXIT', _, Reason} = Msg ->
+	    terminate(Reason, Msg, Server, Role, E);
+	{halt,T,From} = Msg ->
+	    NewE = halting(E,T,From,Server),
+	    From ! {ackLeader,T,self()},
+	    safe_loop(Server,Role,NewE,Msg);
+	{hasLeader,Ldr,T,_} = Msg ->
+	    NewE1 = mon_node(E,Ldr,Server),
+	    case ( (E#election.status == elec2) and (E#election.acks /= []) ) of
+		true ->
+		    lists:foreach(
                       fun(Node) ->
                               {Name,Node} ! {hasLeader,Ldr,T,self()}
                       end,E#election.acks);
@@ -668,7 +666,6 @@ safe_loop(#server{mod = Mod, state = State} = Server, Role,
                     end
             end,
             hasBecomeLeader(NewE,Server,Msg)
-      end
     end.
 
 
