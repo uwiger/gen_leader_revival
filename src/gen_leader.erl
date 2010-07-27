@@ -1405,7 +1405,7 @@ mon_handle_req({monitor, P}, From, Refs) ->
                {_Name, N}           -> N;
                Pid when is_pid(Pid) -> node(Pid)
            end,
-    case lists:keyfind(Node, 1, Refs) of
+    case lists:keyfind(Node, 2, Refs) of
         {_, Ref} ->
             mon_reply(From, {Ref,Node}),
             Refs;
