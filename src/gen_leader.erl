@@ -557,16 +557,21 @@ safe_loop(#server{mod = Mod, state = State} = Server, Role,
                 true ->
                     timer:cancel(E#election.cand_timer),
                     NewE1 = mon_node(E, From, Server),
-                    NewE = NewE1#election{leader = From,
-                                          leadernode = node(From),
-                                          previous_leader = E#election.leader,
-                                          worker_nodes = Workers,
-                                          candidate_nodes = Candidates,
-                                          status = norm,
-                                          cand_timer=undefined},
+                    NewE2 = NewE1#election{leader = From,
+                                           leadernode = node(From),
+                                           previous_leader = E#election.leader,
+                                           worker_nodes = Workers,
+                                           candidate_nodes = Candidates,
+                                           status = norm,
+                                           cand_timer=undefined},
                     %io:format("Making ~p (myself) surrender. Workers should be passed as: ~p~n~n",
                     %          [self(), NewE]),
                     %io:format("~n~n~n ---Gen leader is forcing this instance to surrender.---~n~n~n"),
+                    NewE = case Role == candidate_joining of
+			       true ->
+				   mon_nodes(NewE2, lesser(node(),candidates(NewE2)),Server);
+			       false -> NewE2
+			   end,
                     {ok,NewState} = Mod:surrendered(State,Synch,NewE),
                     loop(Server#server{state = NewState},surrendered,NewE,Msg);
                 false ->
