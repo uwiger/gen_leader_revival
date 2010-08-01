@@ -6,7 +6,6 @@ MnesiaCore.*
 coverage/*
 erl_crash.dump
 .gen_leader*
-doc/*
 key
 key.pub
 contrib/**/ebin/*
