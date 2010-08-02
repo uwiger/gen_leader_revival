@@ -7,17 +7,17 @@
 
 %% gen_leader callbacks
 -export([init/1,
-	 handle_cast/3,
-	 handle_call/4,
-	 handle_info/2,
-	 handle_leader_call/4,
-	 handle_leader_cast/3,
-	 handle_DOWN/3,
-	 elected/3,
-	 surrendered/3,
-	 from_leader/3,
-	 code_change/4,
-	 terminate/2]).
+         handle_cast/3,
+         handle_call/4,
+         handle_info/2,
+         handle_leader_call/4,
+         handle_leader_cast/3,
+         handle_DOWN/3,
+         elected/3,
+         surrendered/3,
+         from_leader/3,
+         code_change/4,
+         terminate/2]).
 
 
 -define(SERVER, ?MODULE).
