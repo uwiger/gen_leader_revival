@@ -121,7 +121,6 @@
           leadernode = none,
           candidate_nodes = [],
           worker_nodes = [],
-          alive = [],
           down = [],
           monitored = [],
           buffered = [],
@@ -226,8 +225,8 @@ start_link(Name, CandidateNodes, OptArgs, Mod, Arg, Options)
 
 %% Query functions to be used from the callback module
 
-alive(#election{alive = Alive}) ->
-    Alive.
+alive(E) ->
+    candidates(E) -- down(E).
 
 down(#election{down = Down}) ->
     Down.
@@ -1373,8 +1372,7 @@ pos(N1,[_|Ns]) ->
 
 check_candidates(#election{down = Down} = E) ->
     NewDown = [N || N <- Down, {ok, up} =/= net_kernel:node_info(N, state)],
-    NewAlive = E#election.candidate_nodes -- NewDown,
-    E#election{down = NewDown, alive = NewAlive}.
+    E#election{down = NewDown}.
 
 broadcast_candidates(E, Synch, IgnoreNodes) ->
     case E#election.bcast_type of
