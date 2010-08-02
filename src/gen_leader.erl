@@ -1243,30 +1243,6 @@ joinCluster(E, Server) ->
     NewE#election{status = joining}.
 
 
-%% Start monitor a bunch of candidate nodes
-mon_nodes(E,Nodes,Server) ->
-    E1 =
-        case E#election.cand_timer of
-            undefined ->
-                {ok, TRef} = timer:send_interval(E#election.cand_timer_int, {candidate_timer}),
-                E#election{cand_timer = TRef};
-            _ ->
-                E
-        end,
-    FromNode = node(),
-    foldl(
-      fun(ToNode,El) ->
-              Pid  = {El#election.name, ToNode},
-              Pid ! {heartbeat, FromNode},
-              mon_node(El, Pid, Server)
-      end,E1,Nodes -- [node()]).
-
-%% Star monitoring one Process
-mon_node(E,Proc,Server) ->
-    {Ref,Node} = do_monitor(Proc, Server),
-    E#election{monitored = [{Ref,Node} | E#election.monitored]}.
-
-
 %%% checks if the proc has become the leader, if so switch to loop
 hasBecomeLeader(E,Server,Msg) ->
     case ((E#election.status == norm) and (E#election.leader == self())) of
@@ -1395,6 +1371,30 @@ call_elected(Mod, State, E, From) when is_pid(From) ->
     end.
 
 
+%% Start monitor a bunch of candidate nodes
+mon_nodes(E,Nodes,Server) ->
+    E1 =
+        case E#election.cand_timer of
+            undefined ->
+                {ok, TRef} = timer:send_interval(E#election.cand_timer_int, {candidate_timer}),
+                E#election{cand_timer = TRef};
+            _ ->
+                E
+        end,
+    FromNode = node(),
+    foldl(
+      fun(ToNode,El) ->
+              Pid  = {El#election.name, ToNode},
+              Pid ! {heartbeat, FromNode},
+              mon_node(El, Pid, Server)
+      end,E1,Nodes -- [node()]).
+
+%% Star monitoring one Process
+mon_node(E,Proc,Server) ->
+    {Ref,Node} = do_monitor(Proc, Server),
+    E#election{monitored = [{Ref,Node} | E#election.monitored]}.
+
+
 spawn_monitor_proc() ->
     Parent = self(),
     proc_lib:spawn_link(
@@ -1449,4 +1449,3 @@ mon_handle_down(Ref, Parent, Refs) ->
 
 mon_reply(From, Reply) ->
     From ! {mon_reply, Reply}.
-
