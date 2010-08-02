@@ -629,7 +629,7 @@ safe_loop(#server{mod = Mod, state = State} = Server, Role,
                         E#election{cand_timer = undefined};
                     Down ->
                         %% Some of potential master candidate nodes are down.
-			%% Try to wake them up
+                        %% Try to wake them up
                         F = fun(N) ->
                                     {E#election.name, N} ! {heartbeat, node()}
                             end,
