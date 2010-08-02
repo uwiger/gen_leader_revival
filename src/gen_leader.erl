@@ -1349,12 +1349,6 @@ broadcast({from_leader, Msg}, ToNodes, E) ->
       end,ToNodes),
     E.
 
-iselem(_,[]) ->
-    false;
-iselem(P,[{_,P}|_]) ->
-    true;
-iselem(P,[_ | Ns]) ->
-    iselem(P,Ns).
 
 lesser(_,[]) ->
     [];
