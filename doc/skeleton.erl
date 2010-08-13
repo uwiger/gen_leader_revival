@@ -80,8 +80,7 @@ elected(State, _Election, undefined) ->
 %% Called only in the leader process when a new candidate joins the
 %% cluster. The Synch term will be sent to Node.
 %%
-%% @spec elected(State, Election, Node) -> {ok, Synch, State} |
-%%                                         {reply, Synch, State}
+%% @spec elected(State, Election, Node) -> {ok, Synch, State}
 %% @end
 %%--------------------------------------------------------------------
 elected(State, _Election, _Node) ->
