@@ -106,12 +106,6 @@
          print_event/3
         ]).
 
--import(lists, [foldl/3,
-                foreach/2,
-                member/2,
-                keydelete/3,
-                keysearch/3]).
-
 -record(election, {
           leader = none,
           previous_leader = none,
@@ -383,10 +377,10 @@ init_it(Starter,Parent,Name,Mod,{CandidateNodes,OptArgs,Arg},Options) ->
     BcastType   = proplists:get_value(bcast_type,OptArgs, sender),
     Seed        = proplists:get_value(seed,      OptArgs, none),
     Debug       = debug_options(Name, Options),
-    AmCandidate = case member(node(), CandidateNodes) of
+    AmCandidate = case lists:member(node(), CandidateNodes) of
                       true -> true;
                       false ->
-                          case member(node(), Workers) of
+                          case lists:member(node(), Workers) of
                               true -> false;
                               false ->
                                   Seed =/= none
@@ -402,7 +396,7 @@ init_it(Starter,Parent,Name,Mod,{CandidateNodes,OptArgs,Arg},Options) ->
       bcast_type      = BcastType
      },
 
-    case {AmCandidate, member(node(), Workers)} of
+    case {AmCandidate, lists:member(node(), Workers)} of
         {false, false} ->
             %% I am neither a candidate nor a worker - don't start this process
             error_logger:warning_msg("~w not started - node is not a candidate/worker\n", [Name]),
@@ -744,7 +738,7 @@ loop(#server{parent = Parent,
                     case (self() == E#election.leader) of
                         true ->
                             NewCandidates =
-                                case member(node(From), candidates(E)) of
+                                case lists:member(node(From), candidates(E)) of
                                     true -> candidates(E);
                                     false ->
                                         NC = candidates(E) ++ [node(From)],
@@ -996,9 +990,10 @@ handle_msg({'$leader_call', From, Request} = Msg, Server, Role,
     loop(Server, Role, E#election{buffered = NewBuffered},Msg);
 handle_msg({Ref, {leader,reply,Reply}} = Msg, Server, Role,
            #election{buffered = Buffered} = E) ->
-    {value, {_,From}} = keysearch(Ref,1,Buffered),
+    {value, {_,From}} = lists:keysearch(Ref,1,Buffered),
     NewServer = reply(From, {leader,reply,Reply}, Server, Role,
-                      E#election{buffered = keydelete(Ref,1,Buffered)}),
+                      E#election{buffered =
+				     lists:keydelete(Ref,1,Buffered)}),
     loop(NewServer, Role, E, Msg);
 handle_msg({'$gen_call', From, get_candidates} = Msg, Server, Role, E) ->
     NewServer = reply(From, {ok, candidates(E)}, Server, Role, E),
@@ -1316,7 +1311,7 @@ broadcast(Msg, #election{monitored = Monitored} = E) ->
     broadcast(Msg, ToNodes, E).
 
 broadcast({from_leader, Msg}, ToNodes, E) ->
-    foreach(
+    lists:foreach(
       fun(Node) ->
               {E#election.name,Node} ! {from_leader, Msg}
       end,ToNodes),
@@ -1380,7 +1375,7 @@ mon_nodes(E,Nodes,Server) ->
                 E
         end,
     FromNode = node(),
-    foldl(
+    lists:foldl(
       fun(ToNode,El) ->
               Pid  = {El#election.name, ToNode},
               Pid ! {heartbeat, FromNode},
