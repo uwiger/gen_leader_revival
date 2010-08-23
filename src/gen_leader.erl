@@ -106,8 +106,6 @@
          print_event/3
         ]).
 
--import(error_logger , [format/2]).
-
 -import(lists, [foldl/3,
                 foreach/2,
                 member/2,
@@ -1112,11 +1110,11 @@ terminate(Reason, Msg, #server{mod = Mod,
 
 %% Maybe we shouldn't do this?  We have the crash report...
 error_info(Reason, Name, Msg, State, Debug) ->
-    format("** Generic leader ~p terminating \n"
-           "** Last message in was ~p~n"
-           "** When Server state == ~p~n"
-           "** Reason for termination == ~n** ~p~n",
-           [Name, Msg, State, Reason]),
+    error_logger:format("** Generic leader ~p terminating \n"
+			"** Last message in was ~p~n"
+			"** When Server state == ~p~n"
+			"** Reason for termination == ~n** ~p~n",
+			[Name, Msg, State, Reason]),
     sys:print_log(Debug),
     ok.
 
@@ -1152,8 +1150,8 @@ dbg_options(Name, Opts) ->
 dbg_opts(Name, Opts) ->
     case catch sys:debug_options(Opts) of
         {'EXIT',_} ->
-            format("~p: ignoring erroneous debug options - ~p~n",
-                   [Name, Opts]),
+            error_logger:format("~p: ignoring erroneous debug options - ~p~n",
+				[Name, Opts]),
             [];
         Dbg ->
             Dbg
