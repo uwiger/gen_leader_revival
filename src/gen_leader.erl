@@ -464,7 +464,7 @@ init_it(Starter,Parent,Name,Mod,{CandidateNodes,OptArgs,Arg},Options) ->
                 false ->
                     rpc:multicall(Candidates, gen_leader,
                                   worker_announce, [Name, node(self())]);
-                _ -> nop
+                true -> nop
             end,
             safe_loop(#server{parent = Parent,mod = Mod,
                               state = State,debug = Debug},
