@@ -57,21 +57,6 @@
 %%% </p>
 %%% @end
 %%%
-%%% @type leader_options() = [OptArg]
-%%%          OptArg = {workers,   Workers::[node()]}    |
-%%%                   {vardir,    Dir::string()}        |
-%%%                   {bcast_type,Type::bcast_type()}   |
-%%%                   {heartbeat, Seconds::integer()}
-%%% @type bcast_type() = all | sender.
-%%%         Notification control of candidate membership changes. `all'
-%%%         means that returns from the handle_DOWN/3 and elected/3 leader's events 
-%%%         will be broadcast to all candidates.
-%%% @type election() = tuple(). Opaque state of the gen_leader behaviour.
-%%% @type node() = atom(). A node name.
-%%% @type name() = atom(). A locally registered name.
-%%% @type serverRef() = Name | {name(),node()} | {global,Name} | pid().
-%%%   See gen_server.
-%%% @type callerRef() = {pid(), reference()}. See gen_server.
 %%%
 -module(gen_leader).
 
@@ -114,29 +99,69 @@
                 keydelete/3,
                 keysearch/3]).
 
+
+-type option() :: {'workers',    Workers::[node()]}
+                | {'vardir',     Dir::string()}
+                | {'bcast_type', Type::bcast_type()}
+                | {'heartbeat',  Seconds::integer()}.
+
+-type options() :: [option()].
+
+%% Notification control of candidate membership changes. `all'
+%% means that returns from the handle_DOWN/3 and elected/3 leader's events
+%% will be broadcast to all candidates.
+-type bcast_type() :: 'all' | 'sender'.
+
+-type status() :: 'elec1' | 'elec2' | 'wait' | 'joining' | 'worker' |
+                  'waiting_worker' | 'norm'.
+
+%% A locally registered name
+-type name() :: atom().
+
+%% A monitor ref
+-type mon_ref() :: reference().
+
+-type server_ref() :: name() | {name(),node()} | {global,name()} | pid().
+
+%% Incarnation number
+-type incarn() :: integer().
+
+%% Logical clock
+-type lclock() :: integer().
+
+%% Node priority in the election
+-type priority() :: integer().
+
+%% Election id
+-type elid() :: {priority(), incarn(), lclock()}.
+
+%% See gen_server.
+-type caller_ref() :: {pid(), reference()}.
+
+%% Opaque state of the gen_leader behaviour.
 -record(election, {
-          leader = none,
-          previous_leader = none,
-          name,
-          leadernode = none,
-          candidate_nodes = [],
-          worker_nodes = [],
-          down = [],
-          monitored = [],
-          buffered = [],
-          seed_node = none,
-          status,
-          elid,
-          acks = [],
-          work_down = [],
-          cand_timer_int,
-          cand_timer,
-          pendack,
-          incarn,
-          nextel,
+          leader = none             :: 'none' | pid(),
+          previous_leader = none    :: 'none' | pid(),
+          name                      :: name(),
+          leadernode = none         :: node(),
+          candidate_nodes = []      :: [node()],
+          worker_nodes = []         :: [node()],
+          down = []                 :: [node()],
+          monitored = []            :: [{mon_ref(), node()}],
+          buffered = []             :: [caller_ref()],
+          seed_node = none          :: 'none' | node(),
+          status                    :: status(),
+          elid                      :: elid(),
+          acks = []                 :: [node()],
+          work_down = []            :: [node()],
+          cand_timer_int            :: integer(),
+          cand_timer                :: timer:tref(),
+          pendack                   :: node(),
+          incarn                    :: incarn(),
+          nextel                    :: integer(),
           %% all | one. When `all' each election event
           %% will be broadcast to all candidate nodes.
-          bcast_type
+          bcast_type                :: bcast_type()
          }).
 
 -record(server, {
@@ -151,7 +176,8 @@
 %%% Interface functions.
 %%% ---------------------------------------------------
 
-%% @hidden
+-spec behaviour_info(atom()) -> 'undefined' | [{atom(), arity()}].
+
 behaviour_info(callbacks) ->
     [{init,1},
      {elected,3},
@@ -168,21 +194,17 @@ behaviour_info(callbacks) ->
 behaviour_info(_Other) ->
     undefined.
 
-%% @spec (Name::node(), CandidateNodes::[node()],
-%%             OptArgs::leader_options(), Mod::atom(), Arg, Options::list()) ->
-%%          {ok,pid()}
-%%
+-type start_ret() :: {'ok', pid()} | {'error', term()}.
+
 %% @doc Starts a gen_leader process without linking to the parent.
 %% @see start_link/6
+-spec start(Name::atom(), CandidateNodes::[node()], OptArgs::options(),
+            Mod::module(), Arg::term(), Options::list()) -> start_ret().
 start(Name, CandidateNodes, OptArgs, Mod, Arg, Options)
   when is_atom(Name), is_list(CandidateNodes), is_list(OptArgs) ->
     gen:start(?MODULE, nolink, {local,Name},
               Mod, {CandidateNodes, OptArgs, Arg}, Options).
 
-%% @spec (Name::node(), CandidateNodes::[node()],
-%%             OptArgs::leader_options(), Mod::atom(), Arg, Options::list()) ->
-%%          {ok,pid()}
-%%
 %% @doc Starts a gen_leader process.
 %% <table>
 %%  <tr><td>Name</td><td>The locally registered name of the process</td></tr>
@@ -218,6 +240,8 @@ start(Name, CandidateNodes, OptArgs, Mod, Arg, Options)
 %% could potentially be added at runtime, but no functionality to do
 %% this is provided by this version.</p>
 %% @end
+-spec start_link(Name::atom(), CandidateNodes::[node()], OptArgs::options(),
+            Mod::module(), Arg::term(), Options::list()) -> start_ret().
 start_link(Name, CandidateNodes, OptArgs, Mod, Arg, Options)
   when is_atom(Name), is_list(CandidateNodes), is_list(OptArgs) ->
     gen:start(?MODULE, link, {local,Name},
@@ -225,27 +249,28 @@ start_link(Name, CandidateNodes, OptArgs, Mod, Arg, Options)
 
 %% Query functions to be used from the callback module
 
+%% @doc Returns list of alive nodes.
+-spec alive(#election{}) -> [node()].
 alive(E) ->
     candidates(E) -- down(E).
 
+%% @doc Returns list of down nodes.
+-spec down(#election{}) -> [node()].
 down(#election{down = Down}) ->
     Down.
 
-%% @spec (E::election()) -> node() | none
 %% @doc Returns the current leader node.
-%%
+-spec leader_node(#election{}) -> node() | 'none'.
 leader_node(#election{leadernode=Leader}) ->
     Leader.
 
-%% @spec candidates(E::election()) -> [node()]
 %% @doc Returns a list of known candidates.
-%%
+-spec candidates(#election{}) -> [node()].
 candidates(#election{candidate_nodes = Cands}) ->
     Cands.
 
-%% @spec workers(E::election()) -> [node()]
 %% @doc Returns a list of known workers.
-%%
+-spec workers(#election{}) -> [node()].
 workers(#election{worker_nodes = Workers}) ->
     Workers.
 
@@ -262,13 +287,12 @@ worker_announce(Name, Pid) ->
 %% If the client is trapping exits and is linked server termination
 %% is handled here (? Shall we do that here (or rely on timeouts) ?).
 %%
-%% @spec call(Name::serverRef(), Request) -> term()
-%%
 %% @doc Equivalent to <code>gen_server:call/2</code>, but with a slightly
 %% different exit reason if something goes wrong. This function calls
 %% the <code>gen_leader</code> process exactly as if it were a gen_server
 %% (which, for practical purposes, it is.)
 %% @end
+-spec call(server_ref(), term()) -> term().
 call(Name, Request) ->
     case catch gen:call(Name, '$gen_call', Request) of
         {ok,Res} ->
@@ -277,16 +301,12 @@ call(Name, Request) ->
             exit({Reason, {?MODULE, local_call, [Name, Request]}})
     end.
 
-%% @spec call(Name::serverRef(), Request, Timeout::integer()) ->
-%%     Reply
-%%
-%%     Reply = term()
-%%
 %% @doc Equivalent to <code>gen_server:call/3</code>, but with a slightly
 %% different exit reason if something goes wrong. This function calls
 %% the <code>gen_leader</code> process exactly as if it were a gen_server
 %% (which, for practical purposes, it is.)
 %% @end
+-spec call(server_ref(), term(), integer()) -> term().
 call(Name, Request, Timeout) ->
     case catch gen:call(Name, '$gen_call', Request, Timeout) of
         {ok,Res} ->
@@ -295,11 +315,6 @@ call(Name, Request, Timeout) ->
             exit({Reason, {?MODULE, local_call, [Name, Request, Timeout]}})
     end.
 
-%% @spec leader_call(Name::name(), Request::term())
-%%    -> Reply
-%%
-%%    Reply = term()
-%%
 %% @doc Makes a call (similar to <code>gen_server:call/2</code>) to the
 %% leader. The call is forwarded via the local gen_leader instance, if
 %% that one isn't actually the leader. The client will exit if the
@@ -308,6 +323,7 @@ call(Name, Request, Timeout) ->
 %% same default timeout as e.g. <code>gen_server:call/2</code>.</p>
 %% @end
 %%
+-spec leader_call(Name::server_ref(), Request::term()) -> term().
 leader_call(Name, Request) ->
     case catch gen:call(Name, '$leader_call', Request) of
         {ok,{leader,reply,Res}} ->
@@ -318,17 +334,14 @@ leader_call(Name, Request) ->
             exit({Reason, {?MODULE, leader_call, [Name, Request]}})
     end.
 
-%% @spec leader_call(Name::name(), Request::term(), Timeout::integer())
-%%    -> Reply
-%%
-%%    Reply = term()
-%%
 %% @doc Makes a call (similar to <code>gen_server:call/3</code>) to the
 %% leader. The call is forwarded via the local gen_leader instance, if
 %% that one isn't actually the leader. The client will exit if the
 %% leader dies while the request is outstanding.
 %% @end
 %%
+-spec leader_call(Name::server_ref(), Request::term(),
+                  Timeout::integer()) -> term().
 leader_call(Name, Request, Timeout) ->
     case catch gen:call(Name, '$leader_call', Request, Timeout) of
         {ok,{leader,reply,Res}} ->
@@ -339,13 +352,14 @@ leader_call(Name, Request, Timeout) ->
 
 
 %% @equiv gen_server:cast/2
+-spec cast(Name::name()|pid(), Request::term()) -> 'ok'.
 cast(Name, Request) ->
     catch do_cast('$gen_cast', Name, Request),
     ok.
 
-%% @spec leader_cast(Name::name(), Msg::term()) -> ok
 %% @doc Similar to <code>gen_server:cast/2</code> but will be forwarded to
 %% the leader via the local gen_leader instance.
+-spec leader_cast(Name::name()|pid(), Request::term()) -> 'ok'.
 leader_cast(Name, Request) ->
     catch do_cast('$leader_cast', Name, Request),
     ok.
@@ -357,8 +371,8 @@ do_cast(Tag, Pid, Request) when is_pid(Pid) ->
     Pid ! {Tag, Request}.
 
 
-%% @spec reply(From::callerRef(), Reply::term()) -> Void
 %% @equiv gen_server:reply/2
+-spec reply(From::caller_ref(), Reply::term()) -> term().
 reply({To, Tag}, Reply) ->
     catch To ! {Tag, Reply}.
 

@@ -3,6 +3,8 @@ ebin/*.beam
 ebin/*.rel
 erl_crash.dump
 .gen_leader*
+.eunit
+.gen_leader_plt
 
 # OS X
 .DS_Store
@@ -11,6 +13,3 @@ profile
 # Vim
 *.swp
 *.swo
-
-# rebar
-.eunit
