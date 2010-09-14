@@ -124,10 +124,10 @@
 -type server_ref() :: name() | {name(),node()} | {global,name()} | pid().
 
 %% Incarnation number
--type incarn() :: integer().
+-type incarn() :: non_neg_integer().
 
 %% Logical clock
--type lclock() :: integer().
+-type lclock() :: non_neg_integer().
 
 %% Node priority in the election
 -type priority() :: integer().
@@ -155,7 +155,7 @@
           acks = []                 :: [node()],
           work_down = []            :: [node()],
           cand_timer_int            :: integer(),
-          cand_timer                :: timer:tref(),
+          cand_timer                :: term(),
           pendack                   :: node(),
           incarn                    :: incarn(),
           nextel                    :: integer(),
@@ -478,7 +478,7 @@ init_it(Starter,Parent,Name,Mod,{CandidateNodes,OptArgs,Arg},Options) ->
                 false ->
                     rpc:multicall(Candidates, gen_leader,
                                   worker_announce, [Name, node(self())]);
-                _ -> nop
+                true -> nop
             end,
             safe_loop(#server{parent = Parent,mod = Mod,
                               state = State,debug = Debug},
