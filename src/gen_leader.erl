@@ -148,7 +148,7 @@
           worker_nodes = []         :: [node()],
           down = []                 :: [node()],
           monitored = []            :: [{mon_ref(), node()}],
-          buffered = []             :: [caller_ref()],
+          buffered = []             :: [{reference(),caller_ref()}],
           seed_node = none          :: 'none' | node(),
           status                    :: status(),
           elid                      :: elid(),
@@ -474,7 +474,7 @@ init_it(Starter,Parent,Name,Mod,{CandidateNodes,OptArgs,Arg},Options) ->
                                  C;
                              false -> CandidateNodes
                          end,
-            case lists:member(self(), Workers) of
+            case lists:member(node(), Workers) of
                 false ->
                     rpc:multicall(Candidates, gen_leader,
                                   worker_announce, [Name, node(self())]);
