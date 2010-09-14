@@ -1,27 +1,8 @@
 # From the build processes
 ebin/*.beam
 ebin/*.rel
-Mnesia.*
-MnesiaCore.*
-coverage/*
 erl_crash.dump
 .gen_leader*
-key
-key.pub
-contrib/**/ebin/*
-contrib/**/doc/*
-
-# unique config files
-*.config
-*.boot
-*.script
-
-# from the logger
-*.log
-
-# Xcode
-build/*
-*.xcodeproj/*
 
 # OS X
 .DS_Store
@@ -30,3 +11,6 @@ profile
 # Vim
 *.swp
 *.swo
+
+# rebar
+.eunit
