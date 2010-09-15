@@ -1015,7 +1015,7 @@ handle_msg({Ref, {leader,reply,Reply}} = Msg, Server, Role,
     {value, {_,From}} = lists:keysearch(Ref,1,Buffered),
     NewServer = reply(From, {leader,reply,Reply}, Server, Role,
                       E#election{buffered =
-				     lists:keydelete(Ref,1,Buffered)}),
+                                     lists:keydelete(Ref,1,Buffered)}),
     loop(NewServer, Role, E, Msg);
 handle_msg({'$gen_call', From, get_candidates} = Msg, Server, Role, E) ->
     NewServer = reply(From, {ok, candidates(E)}, Server, Role, E),
@@ -1128,10 +1128,10 @@ terminate(Reason, Msg, #server{mod = Mod,
 %% Maybe we shouldn't do this?  We have the crash report...
 error_info(Reason, Name, Msg, State, Debug) ->
     error_logger:format("** Generic leader ~p terminating \n"
-			"** Last message in was ~p~n"
-			"** When Server state == ~p~n"
-			"** Reason for termination == ~n** ~p~n",
-			[Name, Msg, State, Reason]),
+                        "** Last message in was ~p~n"
+                        "** When Server state == ~p~n"
+                        "** Reason for termination == ~n** ~p~n",
+                        [Name, Msg, State, Reason]),
     sys:print_log(Debug),
     ok.
 
@@ -1168,7 +1168,7 @@ dbg_opts(Name, Opts) ->
     case catch sys:debug_options(Opts) of
         {'EXIT',_} ->
             error_logger:format("~p: ignoring erroneous debug options - ~p~n",
-				[Name, Opts]),
+                                [Name, Opts]),
             [];
         Dbg ->
             Dbg
