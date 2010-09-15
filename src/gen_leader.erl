@@ -91,14 +91,6 @@
          print_event/3
         ]).
 
--import(error_logger , [format/2]).
-
--import(lists, [foldl/3,
-                foreach/2,
-                member/2,
-                keydelete/3,
-                keysearch/3]).
-
 
 -type option() :: {'workers',    Workers::[node()]}
                 | {'vardir',     Dir::string()}
