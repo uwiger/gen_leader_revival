@@ -1,7 +1,8 @@
 
 DIALYZER=dialyzer
-DIALYZER_OPTS=-Wunmatched_returns -Wrace_conditions -Wunderspecs -Werror_handling -Wbehaviours
+DIALYZER_OPTS=-Wno_return -Wrace_conditions -Wunderspecs -Wbehaviours
 PLT_FILE=.gen_leader_plt
+APPS=kernel stdlib erts compiler crypto
 
 
 all: compile
@@ -12,14 +13,14 @@ compile:
 doc:
 	./rebar doc
 
-plt:
-	./rebar build_plt
+plt: compile
+	$(DIALYZER) --build_plt --output_plt $(PLT_FILE) --apps $(APPS) ./ebin/
 
-check_plt:
-	./rebar check_plt
+check_plt: compile
+	$(DIALYZER) --check_plt --plt $(PLT_FILE) --apps $(APPS) ./ebin/
 
-analyze:
-	$(DIALYZER) --plt $(PLT_FILE)  $(DIALYZER_OPTS) --verbose -r ebin --src src/gen_leader.erl examples/skeleton.erl
+analyze: compile
+	$(DIALYZER) --plt $(PLT_FILE) $(DIALYZER_OPTS) -r ebin/
 
 tests:
 	./rebar eunit
