@@ -788,7 +788,7 @@ loop(#server{parent = Parent,
                     loop(Server,Role,E,Msg);
                 {ack,_,_} ->
                     loop(Server,Role,E,Msg);
-                {ldr,_,_,_} ->
+                {ldr,_,_,_,_} ->
                     loop(Server,Role,E,Msg);
                 {normQ,_,_} ->
                     loop(Server,Role,E,Msg);
