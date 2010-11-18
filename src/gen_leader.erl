@@ -467,10 +467,10 @@ init_it(Starter,Parent,Name,Mod,{CandidateNodes,OptArgs,Arg},Options) ->
                              false -> CandidateNodes
                          end,
             case lists:member(node(), Workers) of
-                false ->
+                true ->
                     rpc:multicall(Candidates, gen_leader,
                                   worker_announce, [Name, node(self())]);
-                true -> nop
+                false -> nop
             end,
             safe_loop(#server{parent = Parent,mod = Mod,
                               state = State,debug = Debug},
