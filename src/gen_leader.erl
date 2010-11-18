@@ -556,6 +556,20 @@ safe_loop(#server{mod = Mod, state = State} = Server, Role,
                         E
                 end,
             hasBecomeLeader(NewE,Server,Msg);
+
+        {ldr,Synch,T,_,_,From} = Msg when Role == waiting_worker ->
+            case ( (T == E#election.elid)
+                   and (node(From) == E#election.leadernode)) of
+                true ->
+                    NewE = E#election{ leader = From, status = worker },
+                    {ok,NewState} = Mod:surrendered(State,Synch,NewE),
+                    loop(Server#server{state = NewState},worker,NewE,Msg);
+                false ->
+                    %% This should be a VERY special case...
+                    %% But doing nothing is the right thing!
+                    %% A DOWN message should arrive to solve this situation
+                    safe_loop(Server,Role,E,Msg)
+            end;
         {ldr,Synch,T,Workers,Candidates,From} = Msg ->
             case ( ( (E#election.status == wait) or (E#election.status == joining) )
                    and (E#election.elid == T) ) of
@@ -616,19 +630,6 @@ safe_loop(#server{mod = Mod, state = State} = Server, Role,
             %% This process is no longer the leader!
             %% The sender will notice this via a DOWN message
             safe_loop(Server,Role,E,Msg);
-        {activateWorker,T,Synch,From} = Msg ->
-            case ( (T == E#election.elid)
-                   and (node(From) == E#election.leadernode)) of
-                true ->
-                    NewE = E#election{ leader = From, status = worker },
-                    {ok,NewState} = Mod:surrendered(State,Synch,NewE),
-                    loop(Server#server{state = NewState},worker,NewE,Msg);
-                false ->
-                    %% This should be a VERY special case...
-                    %% But doing nothing is the right thing!
-                    %% A DOWN message should arrive to solve this situation
-                    safe_loop(Server,Role,E,Msg)
-            end;
 
         {heartbeat, _Node} = Msg ->
             safe_loop(Server,Role,E,Msg);
