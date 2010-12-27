@@ -92,17 +92,17 @@
         ]).
 
 
+%% Notification control of candidate membership changes. `all'
+%% means that returns from the handle_DOWN/3 and elected/3 leader's events
+%% will be broadcast to all candidates.
+-type bcast_type() :: 'all' | 'sender'.
+
 -type option() :: {'workers',    Workers::[node()]}
                 | {'vardir',     Dir::string()}
                 | {'bcast_type', Type::bcast_type()}
                 | {'heartbeat',  Seconds::integer()}.
 
 -type options() :: [option()].
-
-%% Notification control of candidate membership changes. `all'
-%% means that returns from the handle_DOWN/3 and elected/3 leader's events
-%% will be broadcast to all candidates.
--type bcast_type() :: 'all' | 'sender'.
 
 -type status() :: 'elec1' | 'elec2' | 'wait' | 'joining' | 'worker' |
                   'waiting_worker' | 'norm'.
