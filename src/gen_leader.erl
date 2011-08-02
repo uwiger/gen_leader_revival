@@ -1181,7 +1181,7 @@ dbg_opts(Name, Opts) ->
 %% @hidden
 format_status(Opt, StatusData) ->
     [PDict, SysState, Parent, Debug, [_Mode, Server, _Role, E]] = StatusData,
-    Header = lists:concat(["Status for generic server ", E#election.name]),
+    Header = lists:concat(["Status for gen_leader ", E#election.name]),
     Log = sys:get_debug(log, Debug, []),
     #server{mod = Mod, state = State} = Server,
     Specific =
@@ -1195,6 +1195,16 @@ format_status(Opt, StatusData) ->
                 [{data, [{"State", State}]}]
         end,
     [{header, Header},
+     {gen_leader, [{"Status"         , E#election.status},
+		   {"Leadernode"     , E#election.leadernode},
+		   {"Candidates"     , E#election.candidate_nodes},
+		   {"Workers"        , E#election.worker_nodes},
+		   {"Down candidates", E#election.down},
+		   {"Down workers"   , E#election.work_down},
+		   {"Seed node"      , E#election.seed_node},
+		   {"Incarnation"    , E#election.incarn},
+		   {"Election id"    , E#election.elid},
+		   {"Broadcast type" , E#election.bcast_type}]},
      {data, [{"Status", SysState},
              {"Parent", Parent},
              {"Logged events", Log}]} |
